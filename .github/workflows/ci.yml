@@ -32,6 +32,10 @@ jobs:
             platform: darwin-aarch64
             target: aarch64-apple-darwin
             lib: libwasmtime4j.dylib
+          - os: macos-latest
+            platform: darwin-x86_64
+            target: x86_64-apple-darwin
+            lib: libwasmtime4j.dylib
           - os: windows-latest
             platform: windows-x86_64
             target: x86_64-pc-windows-msvc

@@ -31,6 +31,10 @@ jobs:
             platform: darwin-aarch64
             target: aarch64-apple-darwin
             lib: libwasmtime4j.dylib
+          - os: macos-latest
+            platform: darwin-x86_64
+            target: x86_64-apple-darwin
+            lib: libwasmtime4j.dylib
           - os: windows-latest
             platform: windows-x86_64
             target: x86_64-pc-windows-msvc
@@ -320,6 +324,10 @@ jobs:
           path: wasmtime4j-native/src/main/resources/natives/darwin-aarch64/
       - uses: actions/download-artifact@v8
         with:
+          name: native-darwin-x86_64
+          path: wasmtime4j-native/src/main/resources/natives/darwin-x86_64/
+      - uses: actions/download-artifact@v8
+        with:
           name: native-windows-x86_64
           path: wasmtime4j-native/src/main/resources/natives/windows-x86_64/
 
@@ -352,6 +360,7 @@ jobs:
           test -f wasmtime4j-native/src/main/resources/natives/linux-x86_64/libwasmtime4j.so
           test -f wasmtime4j-native/src/main/resources/natives/linux-aarch64/libwasmtime4j.so
           test -f wasmtime4j-native/src/main/resources/natives/darwin-aarch64/libwasmtime4j.dylib
+          test -f wasmtime4j-native/src/main/resources/natives/darwin-x86_64/libwasmtime4j.dylib
           test -f wasmtime4j-native/src/main/resources/natives/windows-x86_64/wasmtime4j.dll
           test -f wasmtime4j-native/src/main/resources/natives-wasi-nn-src/linux-x86_64/libwasmtime4j.so
           test -f wasmtime4j-native/src/main/resources/natives-wasi-nn-src/linux-aarch64/libwasmtime4j.so
