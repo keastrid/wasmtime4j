@@ -283,6 +283,7 @@ jobs:
   publish:
     name: Publish
     needs: [test, quality, build-native-wasi-nn]
+    if: ${{ !cancelled() && needs.test.result == 'success' && needs.quality.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -335,15 +336,18 @@ jobs:
       # process-resources under -P wasi-nn, and the profile's classifier
       # jar-plugin executions pick up from there.
       - name: Download wasi-nn native libraries
+        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: native-wasi-nn-linux-x86_64
           path: wasmtime4j-native/src/main/resources/natives-wasi-nn-src/linux-x86_64/
       - uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
           name: native-wasi-nn-linux-aarch64
           path: wasmtime4j-native/src/main/resources/natives-wasi-nn-src/linux-aarch64/
       - uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
           name: native-wasi-nn-darwin-aarch64
           path: wasmtime4j-native/src/main/resources/natives-wasi-nn-src/darwin-aarch64/
@@ -353,15 +357,23 @@ jobs:
           echo "Plain native library layout:"
           find wasmtime4j-native/src/main/resources/natives/ -type f
           echo "Wasi-nn native library layout:"
-          find wasmtime4j-native/src/main/resources/natives-wasi-nn-src/ -type f
           test -f wasmtime4j-native/src/main/resources/natives/linux-x86_64/libwasmtime4j.so
           test -f wasmtime4j-native/src/main/resources/natives/linux-aarch64/libwasmtime4j.so
           test -f wasmtime4j-native/src/main/resources/natives/darwin-aarch64/libwasmtime4j.dylib
           test -f wasmtime4j-native/src/main/resources/natives/darwin-x86_64/libwasmtime4j.dylib
           test -f wasmtime4j-native/src/main/resources/natives/windows-x86_64/wasmtime4j.dll
-          test -f wasmtime4j-native/src/main/resources/natives-wasi-nn-src/linux-x86_64/libwasmtime4j.so
-          test -f wasmtime4j-native/src/main/resources/natives-wasi-nn-src/linux-aarch64/libwasmtime4j.so
-          test -f wasmtime4j-native/src/main/resources/natives-wasi-nn-src/darwin-aarch64/libwasmtime4j.dylib
+
+      # Only enable the wasi-nn profile when at least one wasi-nn native was
+      # built; otherwise its classifier jars would be empty.
+      - name: Detect wasi-nn natives
+        id: wasi_nn
+        run: |
+          if find wasmtime4j-native/src/main/resources/natives-wasi-nn-src -type f 2>/dev/null | grep -q .; then
+            echo "profile=,wasi-nn" >> "$GITHUB_OUTPUT"
+          else
+            echo "profile=" >> "$GITHUB_OUTPUT"
+            echo "::warning::No wasi-nn native libraries were built; packaging without wasi-nn classifiers"
+          fi
 
       - name: Extract version from tag
         id: version
@@ -380,7 +392,7 @@ jobs:
       - name: Package release artifacts
         run: |
           DEPLOY_MODULES="-pl wasmtime4j,wasmtime4j-native,wasmtime4j-native-loader,wasmtime4j-jni,wasmtime4j-panama"
-          ./mvnw package -B -P release,skip-native,wasi-nn \
+          ./mvnw package -B -P release,skip-native${{ steps.wasi_nn.outputs.profile }} \
             -DskipTests -DskipQuality -Dmaven.test.skip=true -Dgpg.skip=true \
             -Drevision=${{ steps.version.outputs.version }} \
             $DEPLOY_MODULES
