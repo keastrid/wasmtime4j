@@ -278,10 +278,6 @@ jobs:
     name: Publish
     needs: [test, quality, build-native-wasi-nn]
     runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: write
-      packages: write
     steps:
       - uses: actions/checkout@v7
 
@@ -292,11 +288,6 @@ jobs:
         with:
           java-version: '23'
           distribution: 'temurin'
-          server-id: central
-          server-username: MAVEN_CENTRAL_USERNAME
-          server-password: MAVEN_CENTRAL_PASSWORD
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-          gpg-passphrase: GPG_PASSPHRASE
 
       - name: Cache Maven
         uses: actions/cache@v6
@@ -370,54 +361,11 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # `-P wasi-nn` activates the profile's classifier executions
-      # (wasi-nn, wasi-nn-all-platforms, wasi-nn-<platform>) alongside
-      # the base plain executions, so this single `mvn deploy` uploads
-      # POM + plain main JAR + plain per-platform classifiers +
-      # wasi-nn main classifier + wasi-nn per-platform classifiers in
-      # one atomic Central Portal deployment.
-      - name: Deploy to Maven Central
-        env:
-          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          DEPLOY_MODULES="-pl wasmtime4j,wasmtime4j-native,wasmtime4j-native-loader,wasmtime4j-jni,wasmtime4j-panama"
-          ./mvnw deploy -B -P release,skip-native,wasi-nn \
-            -DskipTests -DskipQuality -Dmaven.test.skip=true \
-            -Drevision=${{ steps.version.outputs.version }} \
-            $DEPLOY_MODULES
-
-      - name: Deploy to GitHub Packages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          DEPLOY_MODULES="-pl wasmtime4j,wasmtime4j-native,wasmtime4j-native-loader,wasmtime4j-jni,wasmtime4j-panama"
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings-github.xml <<'SETTINGS'
-          <settings>
-            <servers>
-              <server>
-                <id>github</id>
-                <username>${env.GITHUB_ACTOR}</username>
-                <password>${env.GITHUB_TOKEN}</password>
-              </server>
-            </servers>
-          </settings>
-          SETTINGS
-          ./mvnw deploy -B -P skip-native,wasi-nn \
-            -DskipTests -DskipQuality -Dmaven.test.skip=true \
-            -Drevision=${{ steps.version.outputs.version }} \
-            -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }} \
-            -Dgpg.skip=true \
-            -s ~/.m2/settings-github.xml \
-            $DEPLOY_MODULES
-
       - name: Package release artifacts
         run: |
           DEPLOY_MODULES="-pl wasmtime4j,wasmtime4j-native,wasmtime4j-native-loader,wasmtime4j-jni,wasmtime4j-panama"
           ./mvnw package -B -P release,skip-native,wasi-nn \
-            -DskipTests -DskipQuality -Dmaven.test.skip=true \
+            -DskipTests -DskipQuality -Dmaven.test.skip=true -Dgpg.skip=true \
             -Drevision=${{ steps.version.outputs.version }} \
             $DEPLOY_MODULES
 
@@ -431,11 +379,11 @@ jobs:
             fi
           done
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
         with:
-          generate_release_notes: true
-          files: |
+          name: release-jars
+          path: |
             wasmtime4j/target/*.jar
             wasmtime4j/target/*.jar.sha256
             wasmtime4j-native/target/*.jar
@@ -446,4 +394,5 @@ jobs:
             wasmtime4j-panama/target/*.jar.sha256
             wasmtime4j-native-loader/target/*.jar
             wasmtime4j-native-loader/target/*.jar.sha256
-
+          retention-days: 90
+          if-no-files-found: error
