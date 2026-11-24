@@ -81,96 +81,6 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-  # Build wasi-nn-featured native libraries. Parallel to build-native; a
-  # separate job (rather than a matrix axis on build-native) so failures on
-  # this experimental path don't cascade into the plain build. Windows is
-  # deliberately omitted — the ort crate's windows-x86_64 story with
-  # ORT_STRATEGY=system is fragile and there's no cheap parity path; a
-  # wasi-nn Windows JAR can land in a follow-up.
-  build-native-wasi-nn:
-    name: Native wasi-nn (${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux-x86_64
-            target: x86_64-unknown-linux-gnu
-            lib: libwasmtime4j.so
-            container: almalinux:8
-            ort_url: https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-x64-1.20.1.tgz
-          - os: ubuntu-24.04-arm
-            platform: linux-aarch64
-            target: aarch64-unknown-linux-gnu
-            lib: libwasmtime4j.so
-            container: almalinux:8
-            ort_url: https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-aarch64-1.20.1.tgz
-          - os: macos-latest
-            platform: darwin-aarch64
-            target: aarch64-apple-darwin
-            lib: libwasmtime4j.dylib
-    runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container || '' }}
-    steps:
-      - name: Install build prerequisites
-        if: matrix.container
-        run: dnf install -y gcc gcc-c++ make curl git perl-core tar gzip which openssl-devel pkgconfig
-
-      - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Install ONNX Runtime (macOS via Homebrew)
-        if: runner.os == 'macOS'
-        run: |
-          brew install onnxruntime
-          # brew formula installs libs to /opt/homebrew/lib and headers to
-          # /opt/homebrew/include/onnxruntime. ort's system strategy expects
-          # ORT_LIB_LOCATION to name the prefix directory.
-          echo "ORT_LIB_LOCATION=/opt/homebrew" >> "$GITHUB_ENV"
-
-      - name: Install ONNX Runtime (Linux prebuilt from Microsoft)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          mkdir -p "$HOME/ort"
-          curl -fsSL "${{ matrix.ort_url }}" -o /tmp/ort.tgz
-          tar -xzf /tmp/ort.tgz -C "$HOME/ort" --strip-components=1
-          # Prebuilt tarball layout: include/, lib/. ORT_LIB_LOCATION points
-          # at the prefix; ort finds lib/libonnxruntime.so beneath it.
-          echo "ORT_LIB_LOCATION=$HOME/ort" >> "$GITHUB_ENV"
-
-      - name: Cache Cargo
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            wasmtime4j-native/.cargo-target
-          key: cargo-wasi-nn-${{ matrix.platform }}-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: cargo-wasi-nn-${{ matrix.platform }}-
-
-      - name: Build wasi-nn native library
-        shell: bash
-        env:
-          CARGO_TARGET_DIR: wasmtime4j-native/.cargo-target
-          ORT_STRATEGY: system
-          ORT_PREFER_DYNAMIC_LINK: '1'
-        run: |
-          cargo build --release \
-            --manifest-path wasmtime4j-native/Cargo.toml \
-            --features wasi-nn \
-            --target ${{ matrix.target }}
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: native-wasi-nn-${{ matrix.platform }}
-          path: wasmtime4j-native/.cargo-target/${{ matrix.target }}/release/${{ matrix.lib }}
-          retention-days: 90
-          if-no-files-found: error
-
   # Test on each platform with JNI (Java 8) and Panama (Java 23)
   test:
     name: Test Java ${{ matrix.java }} (${{ matrix.platform }})
@@ -328,29 +238,6 @@ jobs:
         with:
           name: native-windows-x86_64
           path: wasmtime4j-native/src/main/resources/natives/windows-x86_64/
-
-      # Wasi-nn natives go to a DIFFERENT resource subtree
-      # (natives-wasi-nn-src/) so they don't overwrite the plain natives
-      # in src/main/resources/natives/. wasmtime4j-native/pom.xml stages
-      # this subtree into target/classes-wasi-nn/natives/ during
-      # process-resources under -P wasi-nn, and the profile's classifier
-      # jar-plugin executions pick up from there.
-      - name: Download wasi-nn native libraries
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          name: native-wasi-nn-linux-x86_64
-          path: wasmtime4j-native/src/main/resources/natives-wasi-nn-src/linux-x86_64/
-      - uses: actions/download-artifact@v8
-        continue-on-error: true
-        with:
-          name: native-wasi-nn-linux-aarch64
-          path: wasmtime4j-native/src/main/resources/natives-wasi-nn-src/linux-aarch64/
-      - uses: actions/download-artifact@v8
-        continue-on-error: true
-        with:
-          name: native-wasi-nn-darwin-aarch64
-          path: wasmtime4j-native/src/main/resources/natives-wasi-nn-src/darwin-aarch64/
 
       - name: Verify native libraries
         run: |
