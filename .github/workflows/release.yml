@@ -192,7 +192,7 @@ jobs:
   # see wasmtime4j-native/pom.xml for the packaging plumbing.
   publish:
     name: Publish
-    needs: [test, quality, build-native-wasi-nn]
+    needs: [test, quality]
     if: ${{ !cancelled() && needs.test.result == 'success' && needs.quality.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
